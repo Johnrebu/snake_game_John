@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Friends‑Inspired Snake — PWA</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+  <meta name="theme-color" content="#f9f5ef"/>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>Friends‑Inspired Snake</h1>
+      <div class="controls">
+        <button id="startBtn">Start</button>
+        <button id="pauseBtn">Pause</button>
+        <label>Difficulty
+          <select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option></select>
+        </label>
+      </div>
+    </header>
+
+    <main class="container">
+      <canvas id="game" width="640" height="480" aria-label="Snake game"></canvas>
+      <aside class="sidebar">
+        <div class="scoreboard">
+          <div>Score: <span id="score">0</span></div>
+          <div>Speed: <span id="speed">1x</span></div>
+          <div>Lives: <span id="lives">3</span></div>
+        </div>
+        <div class="legend">
+          <h3>Legend</h3>
+          <div><span class="box food"></span> Food (+1)</div>
+          <div><span class="box power"></span> Power-up (points)</div>
+          <div><span class="box boost"></span> Speed Boost (temp)</div>
+          <div><span class="box rock"></span> Obstacle</div>
+        </div>
+        <div class="promo">
+          <p>This PWA is <strong>Friends‑inspired</strong> — original assets only.
+             Background music is generated in-browser.</p>
+          <p>Installable: use your browser menu → Install App.</p>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="footer">
+      <small>Created with ❤️ — play offline after the first load.</small>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(console.error);
+    }
+  </script>
+</body>
+</html>
