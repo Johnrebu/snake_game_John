@@ -1,4 +1,4 @@
-// Friends-inspired Snake — single-file game logic
+// Friends-inspired Snake — Worms Zone style game logic
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let cw = canvas.width, ch = canvas.height;
@@ -8,10 +8,11 @@ let cols = Math.floor(cw / gridSize), rows = Math.floor(ch / gridSize);
 let snake = [{x:Math.floor(cols/2), y:Math.floor(rows/2)}];
 let dir = {x:1,y:0};
 let nextDir = dir;
-let food = null;
+let food = [];
 let powerups = [];
 let obstacles = [];
 let boosts = [];
+let aiSnakes = [];
 let score = 0;
 let lives = 3;
 let baseInterval = 120; // ms
@@ -25,6 +26,9 @@ const livesEl = document.getElementById('lives');
 const startBtn = document.getElementById('startBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const difficulty = document.getElementById('difficulty');
+
+// AI snake colors
+const aiColors = ['#e74c3c', '#9b59b6', '#f39c12', '#27ae60', '#e67e22', '#34495e'];
 
 // responsive resizing
 function resize() {
@@ -40,8 +44,8 @@ function randCell() { return {x: Math.floor(Math.random()*cols), y: Math.floor(M
 
 function placeFood(){
   let cell;
-  do { cell = randCell(); } while(collidesWithSnake(cell) || cellInObstacles(cell));
-  food = cell;
+  do { cell = randCell(); } while(collidesWithSnake(cell) || cellInObstacles(cell) || collidesWithAnyAI(cell));
+  food.push(cell);
 }
 
 function collidesWithSnake(cell, ignoreHead=false){
@@ -51,15 +55,23 @@ function collidesWithSnake(cell, ignoreHead=false){
   return false;
 }
 
+function collidesWithAnyAI(cell){
+  return aiSnakes.some(ai => ai.snake.some(segment => segment.x === cell.x && segment.y === cell.y));
+}
+
 function cellInObstacles(cell){
   return obstacles.some(o=>o.x===cell.x && o.y===cell.y);
+}
+
+function isOutOfBounds(cell){
+  return cell.x < 0 || cell.x >= cols || cell.y < 0 || cell.y >= rows;
 }
 
 function spawnObstacles(n=6){
   obstacles = [];
   for(let i=0;i<n;i++){
     let cell;
-    do { cell = randCell(); } while(collidesWithSnake(cell) || (food && cell.x===food.x && cell.y===food.y));
+    do { cell = randCell(); } while(collidesWithSnake(cell) || collidesWithAnyAI(cell) || food.some(f => f.x === cell.x && f.y === cell.y));
     obstacles.push(cell);
   }
 }
@@ -68,7 +80,7 @@ function spawnPowerups(n=2){
   powerups = [];
   for(let i=0;i<n;i++){
     let cell;
-    do { cell = randCell(); } while(collidesWithSnake(cell) || cellInObstacles(cell) || (food && cell.x===food.x && cell.y===food.y));
+    do { cell = randCell(); } while(collidesWithSnake(cell) || cellInObstacles(cell) || collidesWithAnyAI(cell) || food.some(f => f.x === cell.x && f.y === cell.y));
     powerups.push({pos:cell, value:5});
   }
 }
@@ -77,20 +89,212 @@ function spawnBoosts(n=1){
   boosts = [];
   for(let i=0;i<n;i++){
     let cell;
-    do{ cell = randCell(); } while(collidesWithSnake(cell) || cellInObstacles(cell));
+    do{ cell = randCell(); } while(collidesWithSnake(cell) || cellInObstacles(cell) || collidesWithAnyAI(cell));
     boosts.push({pos:cell, time:8000});
   }
+}
+
+function createAISnake(){
+  let startPos;
+  do { startPos = randCell(); } while(
+    collidesWithSnake(startPos) || 
+    cellInObstacles(startPos) || 
+    collidesWithAnyAI(startPos) ||
+    food.some(f => f.x === startPos.x && f.y === startPos.y)
+  );
+  
+  return {
+    snake: [startPos, {x: startPos.x - 1, y: startPos.y}],
+    dir: {x: 1, y: 0},
+    nextDir: {x: 1, y: 0},
+    color: aiColors[Math.floor(Math.random() * aiColors.length)],
+    speedMultiplier: 1,
+    boostTimer: 0
+  };
+}
+
+function spawnFoodFromSnake(snakeBody){
+  snakeBody.forEach(segment => {
+    if(Math.random() < 0.7) { // 70% chance each segment becomes food
+      food.push({x: segment.x, y: segment.y});
+    }
+  });
+}
+
+function findClosestTarget(aiSnake){
+  const head = aiSnake.snake[0];
+  let closest = null;
+  let minDist = Infinity;
+  
+  // Check food
+  food.forEach(f => {
+    const dist = Math.abs(head.x - f.x) + Math.abs(head.y - f.y);
+    if(dist < minDist){
+      minDist = dist;
+      closest = f;
+    }
+  });
+  
+  // Check powerups
+  powerups.forEach(p => {
+    const dist = Math.abs(head.x - p.pos.x) + Math.abs(head.y - p.pos.y);
+    if(dist < minDist){
+      minDist = dist;
+      closest = p.pos;
+    }
+  });
+  
+  return closest;
+}
+
+function getValidDirections(aiSnake){
+  const head = aiSnake.snake[0];
+  const directions = [
+    {x: 0, y: -1}, // up
+    {x: 0, y: 1},  // down
+    {x: -1, y: 0}, // left
+    {x: 1, y: 0}   // right
+  ];
+  
+  return directions.filter(d => {
+    // Don't reverse direction
+    if(d.x === -aiSnake.dir.x && d.y === -aiSnake.dir.y) return false;
+    
+    const newHead = {x: head.x + d.x, y: head.y + d.y};
+    
+    // Check boundaries
+    if(isOutOfBounds(newHead)) return false;
+    
+    // Check obstacles
+    if(cellInObstacles(newHead)) return false;
+    
+    // Check collision with own body (except tail which will move)
+    for(let i = 0; i < aiSnake.snake.length - 1; i++){
+      if(aiSnake.snake[i].x === newHead.x && aiSnake.snake[i].y === newHead.y) return false;
+    }
+    
+    // Check collision with player snake
+    if(collidesWithSnake(newHead)) return false;
+    
+    // Check collision with other AI snakes
+    for(let otherAI of aiSnakes){
+      if(otherAI === aiSnake) continue;
+      for(let segment of otherAI.snake){
+        if(segment.x === newHead.x && segment.y === newHead.y) return false;
+      }
+    }
+    
+    return true;
+  });
+}
+
+function advanceAISnake(aiSnake){
+  const head = aiSnake.snake[0];
+  const target = findClosestTarget(aiSnake);
+  const validDirs = getValidDirections(aiSnake);
+  
+  if(validDirs.length === 0){
+    // AI snake is trapped, kill it
+    return false;
+  }
+  
+  // Choose direction towards target if possible
+  if(target){
+    const dx = target.x - head.x;
+    const dy = target.y - head.y;
+    
+    let preferredDir = null;
+    if(Math.abs(dx) > Math.abs(dy)){
+      preferredDir = {x: dx > 0 ? 1 : -1, y: 0};
+    } else {
+      preferredDir = {x: 0, y: dy > 0 ? 1 : -1};
+    }
+    
+    // Check if preferred direction is valid
+    if(validDirs.some(d => d.x === preferredDir.x && d.y === preferredDir.y)){
+      aiSnake.nextDir = preferredDir;
+    } else {
+      // Choose random valid direction
+      aiSnake.nextDir = validDirs[Math.floor(Math.random() * validDirs.length)];
+    }
+  } else {
+    // No target, choose random valid direction
+    aiSnake.nextDir = validDirs[Math.floor(Math.random() * validDirs.length)];
+  }
+  
+  aiSnake.dir = aiSnake.nextDir;
+  const newHead = {x: head.x + aiSnake.dir.x, y: head.y + aiSnake.dir.y};
+  
+  aiSnake.snake.unshift(newHead);
+  
+  // Check if AI ate food
+  let ateFood = false;
+  for(let i = food.length - 1; i >= 0; i--){
+    if(food[i].x === newHead.x && food[i].y === newHead.y){
+      food.splice(i, 1);
+      ateFood = true;
+      break;
+    }
+  }
+  
+  // Check if AI ate powerup
+  for(let i = powerups.length - 1; i >= 0; i--){
+    const p = powerups[i];
+    if(p.pos.x === newHead.x && p.pos.y === newHead.y){
+      powerups.splice(i, 1);
+      ateFood = true;
+      break;
+    }
+  }
+  
+  // Check if AI ate boost
+  for(let i = boosts.length - 1; i >= 0; i--){
+    const b = boosts[i];
+    if(b.pos.x === newHead.x && b.pos.y === newHead.y){
+      aiSnake.speedMultiplier = 2.2;
+      aiSnake.boostTimer = Date.now() + b.time;
+      boosts.splice(i, 1);
+      ateFood = true;
+      break;
+    }
+  }
+  
+  if(!ateFood){
+    aiSnake.snake.pop();
+  }
+  
+  // Handle boost expiration
+  if(aiSnake.boostTimer && Date.now() > aiSnake.boostTimer){
+    aiSnake.speedMultiplier = 1;
+    aiSnake.boostTimer = 0;
+  }
+  
+  return true;
 }
 
 function resetGame(){
   snake = [{x:Math.floor(cols/2), y:Math.floor(rows/2)}];
   dir = {x:1,y:0}; nextDir = dir;
   score = 0; lives = 3; boostTimer=0;
+  food = [];
+  aiSnakes = [];
+  
   const diff = difficulty.value;
-  if(diff==='Easy'){ baseInterval=140; spawnObstacles(4); spawnPowerups(3); spawnBoosts(2); }
-  else if(diff==='Normal'){ baseInterval=120; spawnObstacles(6); spawnPowerups(2); spawnBoosts(1); }
-  else { baseInterval=90; spawnObstacles(10); spawnPowerups(1); spawnBoosts(1); }
-  placeFood();
+  let numAI = 3;
+  if(diff==='Easy'){ baseInterval=140; spawnObstacles(4); spawnPowerups(3); spawnBoosts(2); numAI = 2; }
+  else if(diff==='Normal'){ baseInterval=120; spawnObstacles(6); spawnPowerups(2); spawnBoosts(1); numAI = 3; }
+  else { baseInterval=90; spawnObstacles(10); spawnPowerups(1); spawnBoosts(1); numAI = 4; }
+  
+  // Create AI snakes
+  for(let i = 0; i < numAI; i++){
+    aiSnakes.push(createAISnake());
+  }
+  
+  // Place initial food
+  for(let i = 0; i < 8; i++){
+    placeFood();
+  }
+  
   running = false;
   updateHUD();
   draw();
@@ -111,42 +315,75 @@ document.addEventListener('keydown', e=>{
 
 canvas.addEventListener('click', ()=>{ if(!running){ running=true; loop(); } });
 
-function updateHUD(){ scoreEl.textContent = score; speedEl.textContent = (1 + (speedMultiplier-1)).toFixed(1)+'x'; livesEl.textContent = lives; }
+function updateHUD(){ 
+  scoreEl.textContent = score; 
+  speedEl.textContent = (1 + (speedMultiplier-1)).toFixed(1)+'x'; 
+  livesEl.textContent = lives; 
+}
 
 function advance(){
   dir = nextDir;
   const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
-  // wraparound
-  head.x = (head.x + cols) % cols;
-  head.y = (head.y + rows) % rows;
-  // collisions
-  if(collidesWithSnake(head) || cellInObstacles(head)){
-    lives -= 1;
-    if(lives<=0){ running=false; alert('Game over! Score: '+score); resetGame(); return; }
-    // shrink snake a bit and continue
-    snake = snake.slice(0, Math.max(1, Math.floor(snake.length/2)));
-    placeFood();
-    updateHUD();
+  
+  // Check boundaries (no wraparound)
+  if(isOutOfBounds(head)){
+    lives = 0;
+    running = false;
+    alert('Game over! Hit the wall. Final Score: ' + score);
+    resetGame();
     return;
   }
+  
+  // Check collision with obstacles
+  if(cellInObstacles(head)){
+    lives = 0;
+    running = false;
+    alert('Game over! Hit an obstacle. Final Score: ' + score);
+    resetGame();
+    return;
+  }
+  
+  // Check collision with AI snakes
+  for(let ai of aiSnakes){
+    for(let segment of ai.snake){
+      if(head.x === segment.x && head.y === segment.y){
+        lives = 0;
+        running = false;
+        alert('Game over! Hit an AI snake. Final Score: ' + score);
+        resetGame();
+        return;
+      }
+    }
+  }
+  
+  // Note: Player can pass through their own body (Worms Zone style)
   snake.unshift(head);
+  
   // eat food
-  if(food && head.x===food.x && head.y===food.y){
-    score += 1;
-    placeFood();
-    // chance to spawn extra powerup
-    if(Math.random()<0.25) spawnPowerups(1);
-  } else {
+  let ateFood = false;
+  for(let i = food.length - 1; i >= 0; i--){
+    if(food[i].x === head.x && food[i].y === head.y){
+      score += 1;
+      food.splice(i, 1);
+      ateFood = true;
+      break;
+    }
+  }
+  
+  if(!ateFood){
     snake.pop();
   }
+  
   // powerups
   for(let i=powerups.length-1;i>=0;i--){
     const p = powerups[i];
     if(head.x===p.pos.x && head.y===p.pos.y){
       score += p.value;
       powerups.splice(i,1);
+      ateFood = true;
     }
   }
+  
   // boosts
   for(let i=boosts.length-1;i>=0;i--){
     const b = boosts[i];
@@ -154,10 +391,17 @@ function advance(){
       speedMultiplier = 2.2;
       boostTimer = Date.now() + b.time;
       boosts.splice(i,1);
+      ateFood = true;
     }
   }
+  
   // slow down boost expiration
   if(boostTimer && Date.now()>boostTimer){ speedMultiplier = 1; boostTimer = 0; }
+
+  // Spawn more food occasionally
+  if(Math.random() < 0.1 && food.length < 15){
+    placeFood();
+  }
 
   updateHUD();
 }
@@ -165,16 +409,34 @@ function advance(){
 function draw(){
   // clear
   ctx.clearRect(0,0,cw,ch);
-  // draw grid background subtle
+  
+  // draw border
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, cw-2, ch-2);
+  
   // draw obstacles
   obstacles.forEach(o=>drawRect(o.x,o.y, gridSize-2, gridSize-2, '#6b6b6b'));
+  
   // draw food
-  if(food) drawRect(food.x, food.y, gridSize-4, gridSize-4, '#f25c54', true);
+  food.forEach(f => drawRect(f.x, f.y, gridSize-4, gridSize-4, '#f25c54', true));
+  
   // draw powerups
   powerups.forEach(p=>drawRect(p.pos.x, p.pos.y, gridSize-6, gridSize-6, '#5cd6a9', true));
+  
   // draw boosts
   boosts.forEach(b=>drawRect(b.pos.x, b.pos.y, gridSize-6, gridSize-6, '#ffd166', true));
-  // draw snake
+  
+  // draw AI snakes
+  aiSnakes.forEach(ai => {
+    ai.snake.forEach((s,i)=>{
+      const isHead = i === 0;
+      const size = isHead ? gridSize-2 : gridSize-4;
+      drawRect(s.x, s.y, size, size, ai.color, true, isHead);
+    });
+  });
+  
+  // draw player snake
   snake.forEach((s,i)=>{
     const col = i===0 ? '#236b8e' : (i%2? '#79c0d1' : '#b9e6f0');
     drawRect(s.x, s.y, gridSize-2, gridSize-2, col, true, i===0);
@@ -205,15 +467,42 @@ function roundRect(ctx,x,y,w,h,r){
 }
 
 let lastTick = 0;
+let aiLastTick = 0;
 function loop(ts){
   if(!running) return;
   if(!lastTick) lastTick = ts;
+  if(!aiLastTick) aiLastTick = ts;
+  
   const interval = baseInterval / speedMultiplier;
+  
+  // Update player
   if(ts - lastTick >= interval){
     advance();
-    draw();
     lastTick = ts;
   }
+  
+  // Update AI snakes (slightly slower)
+  if(ts - aiLastTick >= interval * 1.2){
+    for(let i = aiSnakes.length - 1; i >= 0; i--){
+      const ai = aiSnakes[i];
+      const survived = advanceAISnake(ai);
+      if(!survived){
+        // AI snake died, turn it into food
+        spawnFoodFromSnake(ai.snake);
+        aiSnakes.splice(i, 1);
+        
+        // Spawn new AI snake after a delay
+        setTimeout(() => {
+          if(running && aiSnakes.length < 4){
+            aiSnakes.push(createAISnake());
+          }
+        }, 3000);
+      }
+    }
+    aiLastTick = ts;
+  }
+  
+  draw();
   requestAnimationFrame(loop);
 }
 
@@ -229,7 +518,8 @@ canvas.addEventListener('touchend', e=>{ if(!touchStart) return; const t = e.cha
 setInterval(()=>{
   if(Math.random()<0.35) spawnPowerups(1);
   if(Math.random()<0.2) spawnBoosts(1);
-}, 10000);
+  if(Math.random()<0.3 && food.length < 20) placeFood();
+}, 8000);
 
 // simple in-browser generated background music using WebAudio
 class BGMusic {

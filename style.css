@@ -18,6 +18,7 @@ canvas#game{background:repeating-linear-gradient(45deg, rgba(0,0,0,0.02) 0 20px,
 .box.power{background:#5cd6a9;}
 .box.boost{background:#ffd166;}
 .box.rock{background:#6b6b6b;}
+.box.ai{background:#e74c3c;}
 .promo{font-size:13px;color:var(--muted);padding:10px;background:linear-gradient(180deg,#fff,#fcfcfc);border-radius:8px;}
 .footer{text-align:center;padding:12px 0;color:var(--muted);font-size:13px;border-top:1px solid #faf0d9;background:transparent;}
 @media (max-width:900px){.container{flex-direction:column;align-items:center}.sidebar{width:100%;max-width:640px}canvas#game{width:100%;height:auto}}
