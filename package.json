@@ -1,0 +1,17 @@
+{
+  "name": "friends-inspired-snake",
+  "version": "1.0.0",
+  "description": "A Friends-inspired Snake PWA game",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve .",
+    "build": "echo 'No build step needed for static files'"
+  },
+  "keywords": ["snake", "game", "pwa", "friends"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.1"
+  }
+}
